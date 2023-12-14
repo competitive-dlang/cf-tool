@@ -130,14 +130,17 @@ Template:
   $%s%$   Second (e.g. 00)
 
 Script in template:
-  Template will run 3 scripts in sequence when you run "cf test":
+  Template will run 4 scripts in sequence when you run "cf test":
+    - preproc_script  (optionally apply adjustments to the source file)
     - before_script   (execute once)
     - script          (execute the number of samples times)
     - after_script    (execute once)
-  You could set "before_script" or "after_script" to empty string, meaning
-  not executing.
-  You have to run your program in "script" with standard input/output (no
-  need to redirect).
+  You could set "preproc_script", "before_script" or "after_script" to empty string,
+  meaning not executing. You have to run your program in "script" with standard
+  input/output (no need to redirect). In the same way, the optional "preproc_script"
+  can read the solution source code from the standard input and writes the amended
+  source code to the standard output. The "before_script" is additionally receiving
+  the solution source code to its standard input.
 
   You can insert some placeholders in your scripts. When execute a script,
   cf will replace all placeholders by following rules:

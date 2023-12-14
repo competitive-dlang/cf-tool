@@ -148,6 +148,86 @@ func judge(sampleID, command string) error {
 	return nil
 }
 
+func run_stdin_to_stdout(command string, input []byte) (output []byte, err error) {
+	input_reader := strings.NewReader(string(input))
+	var o bytes.Buffer
+	output_writer := io.Writer(&o)
+	cmds := splitCmd(command)
+	cmd := exec.Command(cmds[0], cmds[1:]...)
+	cmd.Stdin = input_reader
+	cmd.Stdout = output_writer
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	if err != nil {
+		err = fmt.Errorf("Runtime Error %v", err.Error())
+		return
+	}
+	output = o.Bytes()
+	return
+}
+
+func run_from_stdin(command string, input []byte) (err error) {
+	input_reader := strings.NewReader(string(input))
+	cmds := splitCmd(command)
+	cmd := exec.Command(cmds[0], cmds[1:]...)
+	cmd.Stdin = input_reader
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func standalone_preproc() (output []byte, index int, err error) {
+	cfg := config.Instance
+	if len(cfg.Template) == 0 {
+		err = errors.New("You have to add at least one code template by `cf config`")
+		return
+	}
+	filename, index, err := getOneCode(Args.File, cfg.Template)
+	if err != nil {
+		return
+	}
+	template := cfg.Template[index]
+	path, full := filepath.Split(filename)
+	ext := filepath.Ext(filename)
+	file := full[:len(full)-len(ext)]
+	rand := util.RandString(8)
+
+	filter := func(cmd string) string {
+		cmd = strings.ReplaceAll(cmd, "$%rand%$", rand)
+		cmd = strings.ReplaceAll(cmd, "$%path%$", path)
+		cmd = strings.ReplaceAll(cmd, "$%full%$", full)
+		cmd = strings.ReplaceAll(cmd, "$%file%$", file)
+		return cmd
+	}
+
+	var preprocessed_src []byte
+	var original_src []byte
+
+	if preproc_script := filter(template.PreprocScript); len(preproc_script) > 0 {
+		fmt.Println(preproc_script)
+		original_src, err = ioutil.ReadFile(full)
+		if err != nil {
+			color.Red(err.Error())
+		}
+		preprocessed_src, err = run_stdin_to_stdout(preproc_script, original_src)
+		if err != nil {
+			color.Red(err.Error())
+		}
+	}
+
+	if len(preprocessed_src) == 0 {
+		fmt.Println("got nothing from the preprocessor, so use the src file")
+		preprocessed_src, err = ioutil.ReadFile(full)
+		if err != nil {
+			color.Red(err.Error())
+			return
+		}
+	}
+
+	output = preprocessed_src
+	return
+}
+
 // Test command
 func Test() (err error) {
 	cfg := config.Instance
@@ -188,9 +268,38 @@ func Test() (err error) {
 		return nil
 	}
 
-	if err = run(template.BeforeScript); err != nil {
-		return
+	var preprocessed_src []byte
+	var original_src []byte
+
+	if preproc_script := filter(template.PreprocScript); len(preproc_script) > 0 {
+		fmt.Println(preproc_script)
+		original_src, err = ioutil.ReadFile(full)
+		if err != nil {
+			color.Red(err.Error())
+		}
+		preprocessed_src, err = run_stdin_to_stdout(preproc_script, original_src)
+		if err != nil {
+			color.Red(err.Error())
+		}
 	}
+
+	if before_script := filter(template.BeforeScript); len(before_script) > 0 {
+		fmt.Println(before_script)
+		if len(preprocessed_src) == 0 {
+			fmt.Println("got nothing from the preprocessor, so use the src file")
+			preprocessed_src, err = ioutil.ReadFile(full)
+			if err != nil {
+				color.Red(err.Error())
+				return
+			}
+		}
+		err = run_from_stdin(before_script, preprocessed_src)
+		if err != nil {
+			color.Red(err.Error())
+			return
+		}
+	}
+
 	if s := filter(template.Script); len(s) > 0 {
 		for _, i := range samples {
 			err := judge(i, s)

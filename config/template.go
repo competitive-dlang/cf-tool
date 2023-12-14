@@ -89,12 +89,18 @@ func (c *Config) AddTemplate() (err error) {
 	}
 
 	color.Green("Script in template:")
-	note = `Template will run 3 scripts in sequence when you run "cf test":
+	note = `Template will run 4 scripts in sequence when you run "cf test":
+    - preproc_script  (optionally apply adjustments to the source file)
     - before_script   (execute once)
     - script          (execute the number of samples times)
     - after_script    (execute once)
-  You could set "before_script" or "after_script" to empty string, meaning not executing.
-  You have to run your program in "script" with standard input/output (no need to redirect).
+  You could set "preproc_script", "before_script" or "after_script" to empty string,
+  meaning not executing. You have to run your program in "script" with standard
+  input/output (no need to redirect). In the same way, the optional "preproc_script"
+  can read the solution source code from the standard input and writes the amended
+  source code to the standard output. The "before_script" is additionally receiving
+  the solution source code to its standard input.
+
 
   You can insert some placeholders in your scripts. When execute a script,
   cf will replace all placeholders by following rules:
@@ -105,10 +111,13 @@ func (c *Config) AddTemplate() (err error) {
   $%rand%$   Random string with 8 character (including "a-z" "0-9")`
 	ansi.Println(note)
 
-	color.Cyan(`Before script (e.g. "g++ $%full%$ -o $%file%$.exe -std=c++11"), empty is ok: `)
+	color.Cyan(`Preproc script (e.g. "python /opt/ac-library/expander.py -c --lib /opt/ac-library $%full%$"), empty is ok: `)
+	preprocScript := util.ScanlineTrim()
+
+	color.Cyan(`Before script (e.g. "g++ -xc++ -o $%file%$.exe -" or "g++ $%full%$ -o $%file%$.exe -std=c++11"), empty is ok: `)
 	beforeScript := util.ScanlineTrim()
 
-	color.Cyan(`Script (e.g. "./$%file%$.exe" "python3 $%full%$"): `)
+	color.Cyan(`Script (e.g. "./$%file%$.exe" or "python3 $%full%$"): `)
 	script := ""
 	for {
 		script = util.ScanlineTrim()
@@ -123,7 +132,7 @@ func (c *Config) AddTemplate() (err error) {
 
 	c.Template = append(c.Template, CodeTemplate{
 		alias, lang, path, suffix,
-		beforeScript, script, afterScript,
+		preprocScript, beforeScript, script, afterScript,
 	})
 
 	if util.YesOrNo("Make it default (y/n)? ") {
